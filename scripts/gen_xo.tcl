@@ -34,4 +34,5 @@ if {[file exists "${xoname}"]} {
     file delete -force "${xoname}"
 }
 
-package_xo -ctrl_protocol user_managed -xo_path ${xoname} -kernel_name krnl_merge_rtl -ip_directory ./packaged_kernel_${suffix}
+#package_xo -ctrl_protocol user_managed -xo_path ${xoname} -kernel_name krnl_merge_rtl -ip_directory ./packaged_kernel_${suffix}
+package_xo -xo_path ${xoname} -kernel_name krnl_merge_rtl -ip_directory ./packaged_kernel_${suffix}
