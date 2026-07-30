@@ -124,7 +124,7 @@ static size_t parse_integers(const char* data, size_t size, int* dst) {
 // src_a[0..n_a) and src_b[0..n_b) are individually sorted in ascending
 // order; produces a single ascending-sorted sequence of length n_a + n_b
 // in dst.
-/*static void merge_sorted(const int* src_a, size_t n_a,
+static void merge_sorted(const int* src_a, size_t n_a,
                           const int* src_b, size_t n_b,
                           int* dst) {
     size_t i = 0, j = 0, k = 0;
@@ -133,27 +133,10 @@ static size_t parse_integers(const char* data, size_t size, int* dst) {
     }
     while (i < n_a) dst[k++] = src_a[i++];
     while (j < n_b) dst[k++] = src_b[j++];
-}*/
-static void merge_sorted(const int* src_a, size_t n_a,
-                          const int* src_b, size_t n_b,
-                          std::vector<int, aligned_allocator<int>>& dst) {
-    // dst must already be sized to n_a + n_b
-    int* out = dst.data();
-    size_t i = 0, j = 0, k = 0;
-
-    while (i < n_a && j < n_b) {
-        out[k++] = (src_a[i] <= src_b[j]) ? src_a[i++] : src_b[j++];
-    }
-    while (i < n_a) out[k++] = src_a[i++];
-    while (j < n_b) out[k++] = src_b[j++];
 }
 
 
-
 int main(int argc, char** argv) {
-
-    using namespace std::chrono;
-
     //if (argc != 2) {
     if (argc < 4) {
         //std::cout << "Usage: " << argv[0] << " <XCLBIN File>" << std::endl;
@@ -214,9 +197,9 @@ int main(int argc, char** argv) {
     // std::vector copy.
     // ---------------------------------------------------------------------
     auto t_parse_start = high_resolution_clock::now();
-    //load_input_files(file_a, file_b, source_input1, source_input2);
-    parse_integers(mf_a.data, mf_a.size, source_input1.data());
-    parse_integers(mf_b.data, mf_b.size, source_input2.data());
+    //load_input_files(file_a, file_b, source_in1, source_in2);
+    parse_integers(mf_a.data, mf_a.size, source_in1.data());
+    parse_integers(mf_b.data, mf_b.size, source_in2.data());
     auto t_parse_end = high_resolution_clock::now();
     std::cout << "Parsed input files in "
               << duration_cast<microseconds>(t_parse_end - t_parse_start).count()
@@ -236,7 +219,7 @@ int main(int argc, char** argv) {
     //    source_sw_results[i] = source_input1[i] + source_input2[i];
     //    source_hw_results[i] = 0;
     //}
-    merge_sorted(source_input1.data(), num_values_a, source_input2.data(), num_values_b, source_sw_results);
+    merge_sorted(source_in1.data(), num_values_a, source_in2.data(), num_values_b, source_sw_results);
 
     // OPENCL HOST CODE AREA START
     // Create Program and Kernel
@@ -270,11 +253,11 @@ int main(int argc, char** argv) {
     }
 
     // Allocate Buffer in Global Memory
-    OCL_CHECK(err, cl::Buffer buffer_r1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes_a,
+    OCL_CHECK(err, cl::Buffer buffer_r1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes,
                                         source_input1.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_r2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes_b,
+    OCL_CHECK(err, cl::Buffer buffer_r2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, vector_size_bytes,
                                         source_input2.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_w(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, vector_size_bytes2,
+    OCL_CHECK(err, cl::Buffer buffer_w(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, vector_size_bytes,
                                        source_hw_results.data(), &err));
 
     // Set the Kernel Arguments
@@ -282,11 +265,9 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = krnl_merge.setArg(1, buffer_r2));
     OCL_CHECK(err, err = krnl_merge.setArg(2, buffer_w));
     //OCL_CHECK(err, err = krnl_merge.setArg(3, size));
-    //OCL_CHECK(err, err = krnl_merge.setArg(3, (int)vector_size_bytes_a)); //size
-    //OCL_CHECK(err, err = krnl_merge.setArg(4, (int)vector_size_bytes_b)); //size
-    OCL_CHECK(err, err = krnl_merge.setArg(3, static_cast<uint32_t>(num_values_a))); //size
-    OCL_CHECK(err, err = krnl_merge.setArg(4, static_cast<uint32_t>(num_values_b))); //size
-									  //
+    OCL_CHECK(err, err = krnl_vector_merge.setArg(3, (uint32_t)num_values_a)); //size
+    OCL_CHECK(err, err = krnl_vector_merge.setArg(4, (uint32_t)num_values_b)); //size
+
     // Copy input data to device global memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_r1, buffer_r2}, 0 /* 0 means from host*/));
 
@@ -311,18 +292,18 @@ int main(int argc, char** argv) {
             break;
         }
     }
-   std::cout << "source_input1------------" << std::endl;
+   std::cout << "source_in1------------" << std::endl;
     for (int i = 0; i < num_values_a; i++) {
-        std::cout << source_input1[i];
+        std::cout << source_in1[i];
         if ((i % 32) == 0)
             std::cout << std::endl;
         else
             std::cout << ",";
     }
     std::cout << "---------------" << std::endl;
-    std::cout << "source_input2------------" << std::endl;
+    std::cout << "source_in2------------" << std::endl;
     for (int i = 0; i < num_values_b; i++) {
-        std::cout << source_input2[i];
+        std::cout << source_in2[i];
         if ((i % 32) == 0)
             std::cout << std::endl;
         else
@@ -338,8 +319,8 @@ int main(int argc, char** argv) {
             std::cout << ",";
     }
     std::cout << "---------------" << std::endl;
-    //for (int i = 0; i < num_values_a + num_values_b; i++)
-    //        std::cout << source_hw_results[i] << " ";
+    for (int i = 0; i < num_values_a + num_values_b; i++)
+            std::cout << source_hw_results[i] << " ";
     std::cout << std::endl;
     std::cout << "Merged hw------------" << std::endl;
     for (int i = 0; i < num_values_a + num_values_b; i++) {
